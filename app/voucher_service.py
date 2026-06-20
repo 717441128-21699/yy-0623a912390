@@ -1,19 +1,17 @@
 import uuid
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from app.config import RISK_LEVELS
 
 
 def generate_voucher_code(project_id: str) -> str:
-    """生成凭证编号"""
     date_str = datetime.now().strftime('%Y%m%d')
     uid = uuid.uuid4().hex[:8].upper()
     return f"FW-{project_id[:8]}-{date_str}-{uid}"
 
 
 def generate_conclusion(task_data, results, overall) -> str:
-    """生成验算结论文本"""
     risk_cn = RISK_LEVELS.get(overall['overall_risk_level'], overall['overall_risk_level'])
 
     lines = []
@@ -68,7 +66,6 @@ def generate_conclusion(task_data, results, overall) -> str:
 
 
 def build_voucher_input(task_data) -> Dict[str, Any]:
-    """构建输入参数快照"""
     return {
         'project_id': task_data.project_id,
         'project_name': task_data.project_name,
@@ -95,4 +92,74 @@ def build_voucher_input(task_data) -> Dict[str, Any]:
         'pole_spacing_longitudinal': task_data.pole_spacing_longitudinal,
         'horizontal_step': task_data.horizontal_step,
         'construction_load': task_data.construction_load
+    }
+
+
+def build_approval_voucher(task_data, results: List[Dict[str, Any]], overall: Dict[str, Any]) -> Dict[str, Any]:
+    risk_cn = RISK_LEVELS.get(overall['overall_risk_level'], overall['overall_risk_level'])
+
+    element_type_cn = {
+        "slab": "楼板", "beam": "梁", "column": "柱", "wall": "墙"
+    }.get(task_data.element_type, task_data.element_type)
+
+    input_summary = {
+        "title": "输入参数摘要",
+        "items": [
+            {"label": "项目名称", "value": task_data.project_name},
+            {"label": "楼栋/楼层", "value": f"{task_data.building}号楼 {task_data.floor}层"},
+            {"label": "工程部位", "value": task_data.location},
+            {"label": "构件类型", "value": element_type_cn},
+            {"label": "模板类型", "value": task_data.formwork_type},
+            {"label": "支架高度", "value": f"{task_data.support_height}m"},
+            {"label": "面板", "value": f"{task_data.panel_material} {task_data.panel_thickness}mm"},
+            {"label": "次楞", "value": f"{task_data.secondary_beam_material} {task_data.secondary_beam_size} @{task_data.secondary_beam_spacing}mm"},
+            {"label": "主楞", "value": f"{task_data.main_beam_material} {task_data.main_beam_size} @{task_data.main_beam_spacing}mm"},
+            {"label": "立杆", "value": f"{task_data.pole_type} {task_data.pole_spacing_transverse}×{task_data.pole_spacing_longitudinal}mm 步距{task_data.horizontal_step}mm"},
+        ]
+    }
+
+    if task_data.slab_thickness:
+        input_summary["items"].append({"label": "板厚", "value": f"{task_data.slab_thickness}mm"})
+
+    key_results = {
+        "title": "关键分项验算",
+        "items": []
+    }
+    for r in results:
+        key_results["items"].append({
+            "label": r['check_item_name'],
+            "calculated_value": r['calculated_value'],
+            "allowable_value": r['allowable_value'],
+            "ratio": round(r['ratio'], 3),
+            "is_passed": r['is_passed'],
+            "risk_level": RISK_LEVELS.get(r['risk_level'], r['risk_level']),
+        })
+
+    pass_cn = {"pass": "通过", "warning": "警示", "fail": "不通过"}.get(overall['pass_status'], overall['pass_status'])
+
+    overall_conclusion = {
+        "title": "总体结论",
+        "items": [
+            {"label": "风险等级", "value": risk_cn},
+            {"label": "通过状态", "value": pass_cn},
+            {"label": "最大荷载比", "value": f"{overall['max_ratio']:.3f}"},
+            {"label": "验算时间", "value": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
+        ]
+    }
+
+    failure_section = {
+        "title": "不通过原因",
+        "items": []
+    }
+    if overall['failure_reasons']:
+        for i, reason in enumerate(overall['failure_reasons'], 1):
+            failure_section["items"].append({"label": f"原因{i}", "value": reason})
+    else:
+        failure_section["items"].append({"label": "说明", "value": "无"})
+
+    return {
+        "input_summary": input_summary,
+        "key_check_results": key_results,
+        "overall_conclusion": overall_conclusion,
+        "failure_reasons": failure_section,
     }
