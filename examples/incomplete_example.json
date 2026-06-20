@@ -1,0 +1,19 @@
+{
+  "project_id": "PRJ2024002",
+  "project_name": "测试项目",
+  "building": "1",
+  "floor": "2",
+  "location": "测试部位",
+  "element_type": "slab",
+  "formwork_type": "木模板",
+  "support_height": 3.0,
+  "panel_material": "plywood_15",
+  "panel_thickness": 15,
+  "secondary_beam_material": "wood_pine",
+  "secondary_beam_size": "50x100",
+  "main_beam_material": "wood_pine",
+  "main_beam_size": "50x100",
+  "main_beam_spacing": 900,
+  "pole_type": "steel_48x35",
+  "pole_spacing_transverse": 900
+}
