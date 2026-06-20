@@ -2,7 +2,7 @@ import csv
 import io
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Union
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ValidationError
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -47,7 +47,7 @@ class FormworkCheckCreate(BaseModel):
 
 
 class BatchFormworkCheckCreate(BaseModel):
-    tasks: List[FormworkCheckCreate] = Field(..., min_length=1, max_length=200, description="验算任务列表，最多200条")
+    tasks: List[Dict[str, Any]] = Field(..., min_length=1, max_length=200, description="验算任务列表，最多200条")
 
 
 class CheckResultItem(BaseModel):
@@ -158,7 +158,7 @@ PASS_STATUS_MAP = {
 }
 
 
-def _build_missing_params_from_validation_error(exc: RequestValidationError) -> List[MissingParam]:
+def build_missing_params_from_errors(errors: List[Dict[str, Any]]) -> List[MissingParam]:
     field_category_map = {
         "project_id": ("项目ID", "基础信息"),
         "project_name": ("项目名称", "基础信息"),
@@ -189,7 +189,7 @@ def _build_missing_params_from_validation_error(exc: RequestValidationError) -> 
 
     missing = []
     seen = set()
-    for err in exc.errors():
+    for err in errors:
         if err["type"] == "missing":
             field_name = err["loc"][-1] if err["loc"] else "unknown"
         elif err["type"] == "value_error":
@@ -207,6 +207,10 @@ def _build_missing_params_from_validation_error(exc: RequestValidationError) -> 
         missing.append(MissingParam(field=field_name, name=cn_name, category=category))
 
     return missing
+
+
+def _build_missing_params_from_validation_error(exc: RequestValidationError) -> List[MissingParam]:
+    return build_missing_params_from_errors(exc.errors())
 
 
 async def unified_validation_exception_handler(request: Request, exc: RequestValidationError):

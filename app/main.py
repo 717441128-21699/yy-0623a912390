@@ -46,6 +46,11 @@ app.add_exception_handler(BusinessValidationError, business_validation_error_han
 app.include_router(api_router)
 
 
+@app.on_event("startup")
+async def startup_event():
+    Base.metadata.create_all(bind=engine)
+
+
 @app.get("/health", summary="健康检查")
 async def health_check():
     return {"status": "ok", "service": "formwork-check-service", "version": "2.0.0"}

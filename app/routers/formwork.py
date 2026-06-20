@@ -1,10 +1,11 @@
 import io
 import uuid
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from pydantic import ValidationError
 
 from app.database import get_db
 from app.models import CalculationTask, CheckResult, CalculationVoucher
@@ -24,6 +25,7 @@ from app.schemas import (
     RISK_LEVEL_MAP,
     PASS_STATUS_MAP,
     build_task_csv,
+    build_missing_params_from_errors,
 )
 from app.validator import validate_formwork_params, group_missing_params
 from app.calculator import run_formwork_check
@@ -45,20 +47,37 @@ def generate_task_code(project_id: str) -> str:
     return f"MB-{project_id[:8]}-{date_str}-{uid}"
 
 
-def _process_single_task(data: FormworkCheckCreate, db: Session) -> dict:
+def _build_error_from_missing(missing_params: List) -> Dict[str, Any]:
+    missing_dicts = [p if isinstance(p, dict) else p.model_dump() for p in missing_params]
+    grouped = group_missing_params(missing_dicts)
+    parts = [f"{cat}：{', '.join(fields)}" for cat, fields in grouped.items()]
+    message = "缺少必要参数：" + "；".join(parts)
+    return {
+        "code": "validation_error",
+        "message": message,
+        "missing_params": missing_dicts,
+    }
+
+
+def _process_single_task(data, db: Session) -> dict:
+    if isinstance(data, dict):
+        try:
+            data = FormworkCheckCreate(**data)
+        except ValidationError as e:
+            missing_params = build_missing_params_from_errors(e.errors())
+            error = _build_error_from_missing(missing_params)
+            return {
+                "success": False,
+                "error": error,
+            }
+
     is_valid, missing_params = validate_formwork_params(data)
 
     if not is_valid:
-        grouped = group_missing_params(missing_params)
-        parts = [f"{cat}：{', '.join(fields)}" for cat, fields in grouped.items()]
-        message = "缺少必要参数：" + "；".join(parts)
+        error = _build_error_from_missing(missing_params)
         return {
             "success": False,
-            "error": {
-                "code": "validation_error",
-                "message": message,
-                "missing_params": [p if isinstance(p, dict) else p.model_dump() for p in missing_params],
-            }
+            "error": error,
         }
 
     task_code = generate_task_code(data.project_id)
